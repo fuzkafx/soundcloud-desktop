@@ -1,0 +1,57 @@
+{
+  "name": "soundcloud-desktop",
+  "productName": "SoundCloud Desktop",
+  "version": "1.0.0",
+  "description": "Unofficial desktop client for SoundCloud with a mini player widget",
+  "author": "fuzkafx",
+  "license": "MIT",
+  "homepage": "https://github.com/fuzkafx/soundcloud-desktop",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fuzkafx/soundcloud-desktop.git"
+  },
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "icons": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/make-icons.ps1",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "com.github.soundcloud-desktop",
+    "productName": "SoundCloud Desktop",
+    "executableName": "SoundCloud",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SoundCloud",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "multiLanguageInstaller": true,
+      "installerLanguages": [
+        "en_US",
+        "ru_RU"
+      ],
+      "artifactName": "SoundCloud-Desktop-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  }
+}

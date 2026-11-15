@@ -1,0 +1,153 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Settings</title>
+<style>
+  :root { --bg: #f6f6f7; --card: #fff; --fg: #1b1b1d; --dim: #6b6b72; --line: rgba(0,0,0,.08); --acc: #ff5500; --ctl: #e6e6ea; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1b1b1d; --card: #242427; --fg: #ececee; --dim: #9a9aa2; --line: rgba(255,255,255,.07); --ctl: #3a3a3f; } }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", sans-serif; padding: 20px 20px 28px; }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 16px; }
+  h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 22px 4px 8px; }
+  .card { background: var(--card); border-radius: 10px; border: 1px solid var(--line); }
+  .row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; min-height: 48px; }
+  .row + .row { border-top: 1px solid var(--line); }
+  .row label.l { flex: 1; min-width: 0; }
+  .hint { display: block; color: var(--dim); font-size: 12px; margin-top: 2px; }
+  .row.sub { padding-left: 34px; }
+  .row.disabled { opacity: .45; pointer-events: none; }
+  /* переключатель */
+  .sw { position: relative; width: 40px; height: 22px; flex: none; }
+  .sw input { opacity: 0; position: absolute; inset: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .sw i { position: absolute; inset: 0; border-radius: 11px; background: var(--ctl); transition: background .15s; }
+  .sw i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+  .sw input:checked + i { background: var(--acc); }
+  .sw input:checked + i::after { transform: translateX(18px); }
+  .sw input:focus-visible + i { outline: 2px solid var(--acc); outline-offset: 2px; }
+  /* сегменты */
+  .seg { display: inline-flex; background: var(--ctl); border-radius: 8px; padding: 2px; flex-wrap: wrap; }
+  .seg button { border: 0; background: none; color: var(--fg); font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+  .seg button.on { background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+  input[type=range] { width: 150px; accent-color: var(--acc); }
+  .val { width: 42px; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .swatches { display: flex; gap: 6px; align-items: center; }
+  .swatches button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  .swatches button.on { border-color: var(--fg); }
+  .swatches input[type=color] { width: 26px; height: 26px; border: 0; padding: 0; background: none; cursor: pointer; }
+  .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+  .btn.pri { background: var(--acc); border-color: var(--acc); color: #fff; }
+  .foot { color: var(--dim); font-size: 12px; margin-top: 22px; text-align: center; }
+  .foot a { color: inherit; }
+</style>
+</head>
+<body>
+<h1 data-t="settingsTitle"></h1>
+
+<h2 data-t="secGeneral"></h2>
+<div class="card">
+  <div class="row"><label class="l" data-t="language"></label>
+    <div class="seg" data-key="language" data-opts="auto:langAuto,ru:Русский,en:English"></div></div>
+  <div class="row"><label class="l" for="closeToTray"><span data-t="closeToTray"></span><span class="hint" data-t="closeToTrayHint"></span></label>
+    <span class="sw"><input type="checkbox" id="closeToTray"><i></i></span></div>
+  <div class="row"><label class="l" for="autostart" data-t="autostart"></label>
+    <span class="sw"><input type="checkbox" id="autostart"><i></i></span></div>
+  <div class="row sub" data-dep="autostart"><label class="l" for="autostartHidden" data-t="autostartHidden"></label>
+    <span class="sw"><input type="checkbox" id="autostartHidden"><i></i></span></div>
+</div>
+
+<h2 data-t="secWidget"></h2>
+<div class="card">
+  <div class="row"><label class="l" for="widgetOnTray" data-t="widgetOnTray"></label>
+    <span class="sw"><input type="checkbox" id="widgetOnTray"><i></i></span></div>
+  <div class="row"><label class="l" for="widgetOnMinimize" data-t="widgetOnMinimize"></label>
+    <span class="sw"><input type="checkbox" id="widgetOnMinimize"><i></i></span></div>
+  <div class="row"><label class="l" for="widgetHideIdle" data-t="widgetHideIdle"></label>
+    <span class="sw"><input type="checkbox" id="widgetHideIdle"><i></i></span></div>
+  <div class="row"><label class="l" for="widgetOnTop" data-t="widgetOnTop"></label>
+    <span class="sw"><input type="checkbox" id="widgetOnTop"><i></i></span></div>
+  <div class="row"><label class="l" for="widgetSnap" data-t="widgetSnap"></label>
+    <span class="sw"><input type="checkbox" id="widgetSnap"><i></i></span></div>
+  <div class="row"><label class="l" for="widgetLock" data-t="widgetLock"></label>
+    <span class="sw"><input type="checkbox" id="widgetLock"><i></i></span></div>
+  <div class="row"><label class="l" for="widgetShowVolume"><span data-t="widgetShowVolume"></span><span class="hint" data-t="wheelHint"></span></label>
+    <span class="sw"><input type="checkbox" id="widgetShowVolume"><i></i></span></div>
+  <div class="row"><label class="l" for="widgetShowExtra" data-t="widgetShowExtra"></label>
+    <span class="sw"><input type="checkbox" id="widgetShowExtra"><i></i></span></div>
+</div>
+
+<h2 data-t="secLook"></h2>
+<div class="card">
+  <div class="row"><label class="l" data-t="widgetSize"></label>
+    <div class="seg" data-key="widgetSize" data-opts="normal:sizeNormal,compact:sizeCompact"></div></div>
+  <div class="row"><label class="l" data-t="theme"></label>
+    <div class="seg" data-key="widgetTheme" data-opts="dark:themeDark,light:themeLight,auto:themeAuto,art:themeArt"></div></div>
+  <div class="row"><label class="l" data-t="accent"></label>
+    <div class="swatches" id="swatches"></div></div>
+  <div class="row"><label class="l" for="widgetOpacity" data-t="opacity"></label>
+    <input type="range" id="widgetOpacity" min="50" max="100" step="1"><span class="val" id="widgetOpacityV"></span></div>
+  <div class="row"><label class="l" for="widgetScale" data-t="scale"></label>
+    <input type="range" id="widgetScale" min="80" max="130" step="5"><span class="val" id="widgetScaleV"></span></div>
+</div>
+<div class="actions">
+  <button class="btn pri" id="preview" data-t="preview"></button>
+  <button class="btn" id="resetPos" data-t="resetWidgetPos"></button>
+</div>
+
+<p class="foot"><span data-t="about"></span> · <a href="#" id="repo">GitHub</a> · v<span id="ver"></span></p>
+
+<script>
+  const COLORS = ['#ff5500', '#ff2d55', '#af52de', '#5e5ce6', '#0a84ff', '#30b0c7', '#34c759', '#ffcc00'];
+  let S = {}, T = {};
+  const $ = (id) => document.getElementById(id);
+
+  function render(p) {
+    S = p.settings; T = p.strings;
+    document.documentElement.lang = p.lang;
+    document.title = T.settingsTitle;
+    document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = T[el.dataset.t] || el.dataset.t; });
+    document.querySelectorAll('.sw input').forEach((el) => { el.checked = !!S[el.id]; });
+    document.querySelectorAll('.seg').forEach((seg) => {
+      seg.innerHTML = '';
+      for (const pair of seg.dataset.opts.split(',')) {
+        const [v, label] = pair.split(':');
+        const b = document.createElement('button');
+        b.textContent = T[label] || label;
+        b.className = S[seg.dataset.key] === v ? 'on' : '';
+        b.onclick = () => cfg.set(seg.dataset.key, v);
+        seg.appendChild(b);
+      }
+    });
+    for (const id of ['widgetOpacity', 'widgetScale']) { $(id).value = S[id]; $(id + 'V').textContent = S[id] + '%'; }
+    const sw = $('swatches'); sw.innerHTML = '';
+    const custom = !COLORS.includes(S.widgetAccent);
+    for (const c of COLORS) {
+      const b = document.createElement('button');
+      b.style.background = c; b.title = c; b.className = S.widgetAccent === c ? 'on' : '';
+      b.onclick = () => cfg.set('widgetAccent', c);
+      sw.appendChild(b);
+    }
+    const ci = document.createElement('input'); ci.type = 'color'; ci.value = S.widgetAccent;
+    if (custom) ci.style.outline = '2px solid var(--fg)';
+    ci.onchange = () => cfg.set('widgetAccent', ci.value);
+    sw.appendChild(ci);
+    document.documentElement.style.setProperty('--acc', S.widgetAccent);
+    document.querySelectorAll('[data-dep]').forEach((r) => r.classList.toggle('disabled', !S[r.dataset.dep]));
+    $('ver').textContent = p.version;
+  }
+
+  document.querySelectorAll('.sw input').forEach((el) => { el.onchange = () => cfg.set(el.id, el.checked); });
+  for (const id of ['widgetOpacity', 'widgetScale']) {
+    $(id).oninput = () => { $(id + 'V').textContent = $(id).value + '%'; if (id === 'widgetOpacity') cfg.set(id, +$(id).value); };
+    $(id).onchange = () => cfg.set(id, +$(id).value);
+  }
+  $('preview').onclick = () => cfg.action('previewWidget');
+  $('resetPos').onclick = () => cfg.action('resetWidgetPos');
+  $('repo').onclick = (e) => { e.preventDefault(); cfg.action('openRepo'); };
+  cfg.onChange(render);
+  cfg.get().then(render);
+</script>
+</body>
+</html>

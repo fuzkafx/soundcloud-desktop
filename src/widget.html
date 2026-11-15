@@ -1,0 +1,284 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src https: data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Mini player</title>
+<style>
+  :root {
+    --acc: #ff5500; --alpha: .96;
+    --bg-rgb: 24, 24, 26; --fg: #f2f2f2; --dim: #a0a0a6; --track: rgba(255,255,255,.16); --hover: rgba(255,255,255,.1); --border: rgba(255,255,255,.08);
+  }
+  .light {
+    --bg-rgb: 250, 250, 251; --fg: #19191b; --dim: #6b6b72; --track: rgba(0,0,0,.12); --hover: rgba(0,0,0,.07); --border: rgba(0,0,0,.1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: transparent; height: 100%; overflow: hidden; font: 13px/1.25 "Segoe UI Variable Text", "Segoe UI", sans-serif; color: var(--fg); user-select: none; }
+  body { padding: 4px; }
+  .card {
+    position: relative; height: 100%; border-radius: 12px;
+    background: rgba(var(--bg-rgb), var(--alpha)); border: 1px solid var(--border);
+    box-shadow: 0 4px 14px rgba(0,0,0,.35);
+    display: flex; gap: 12px; padding: 8px 10px 8px 8px; overflow: hidden;
+    -webkit-app-region: drag; transition: background .4s;
+  }
+  .locked .card { -webkit-app-region: no-drag; }
+  .art {
+    flex: none; width: 88px; height: 88px; border-radius: 8px; background: var(--track) center/cover no-repeat;
+    cursor: pointer; -webkit-app-region: no-drag; position: relative; transition: background-image .2s;
+  }
+  .art::after { content: ""; position: absolute; inset: 0; border-radius: 8px; background: rgba(0,0,0,.45) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='white'%3E%3Cpath d='M9 2h5v5h-1.5V4.6L8 9.1 6.9 8l4.5-4.5H9zM3 4h4v1.5H3.5v7h7V9H12v5H2V4z'/%3E%3C/svg%3E") center/22px no-repeat; opacity: 0; transition: opacity .15s; }
+  .art:hover::after { opacity: 1; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; position: relative; }
+  .meta { padding-right: 20px; overflow: hidden; }
+  .title { font-weight: 600; white-space: nowrap; overflow: hidden; }
+  .title span { display: inline-block; }
+  .title.over span { text-overflow: ellipsis; }
+  .title.scroll span { animation: marquee var(--dur, 8s) linear infinite; padding-right: 40px; }
+  @keyframes marquee { 0%, 15% { transform: translateX(0); } 85%, 100% { transform: translateX(var(--shift)); } }
+  .artist { color: var(--dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row { display: flex; align-items: center; gap: 1px; }
+  button {
+    -webkit-app-region: no-drag; background: none; border: 0; color: var(--fg); cursor: pointer; flex: none;
+    width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; transition: background .12s, color .12s, transform .08s;
+  }
+  button:hover { background: var(--hover); }
+  button:active { transform: scale(.92); }
+  button svg { width: 15px; height: 15px; fill: currentColor; }
+  #play { width: 34px; height: 34px; background: var(--acc); color: #fff; margin: 0 2px; }
+  #play:hover { filter: brightness(1.1); }
+  .spacer { flex: 1; }
+  .tog { color: var(--dim); position: relative; }
+  .tog.on { color: var(--acc); }
+  #repeat.one::after { content: "1"; position: absolute; font-size: 8px; font-weight: 700; right: 5px; bottom: 4px; }
+  .time { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 32px; }
+  .time.r { text-align: right; }
+  .bar { -webkit-app-region: no-drag; flex: 1; height: 14px; display: flex; align-items: center; cursor: pointer; margin: 0 6px; position: relative; }
+  .bar i { display: block; height: 3px; width: 100%; background: var(--track); border-radius: 2px; position: relative; overflow: hidden; transition: height .1s; }
+  .bar b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--acc); border-radius: 2px; }
+  .bar:hover i { height: 5px; }
+  .tip { position: absolute; bottom: 14px; transform: translateX(-50%); background: rgba(0,0,0,.8); color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 4px; pointer-events: none; opacity: 0; white-space: nowrap; }
+  .bar:hover .tip { opacity: 1; }
+
+  /* Громкость: всплывает поверх нижней строки */
+  .volpop {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 22px; display: flex; align-items: center; gap: 6px;
+    background: rgba(var(--bg-rgb), 1); opacity: 0; pointer-events: none; transition: opacity .12s; -webkit-app-region: no-drag;
+  }
+  .volpop.show { opacity: 1; pointer-events: auto; }
+  .volpop button { width: 22px; height: 22px; }
+  .volpop button svg { width: 13px; height: 13px; }
+  .vbar { flex: 1; height: 16px; display: flex; align-items: center; cursor: pointer; }
+  .vbar i { flex: 1; display: flex; gap: 2px; height: 6px; }
+  .vbar s { flex: 1; background: var(--track); border-radius: 1px; }
+  .vbar s.on { background: var(--acc); }
+  .vval { width: 32px; text-align: right; font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  #x { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; color: var(--dim); opacity: 0; z-index: 2; }
+  .card:hover #x { opacity: 1; }
+  #x svg { width: 10px; height: 10px; }
+  .empty .title { color: var(--dim); font-weight: 400; }
+  [hidden] { display: none !important; }
+
+  /* Компактный режим */
+  .compact .card { gap: 10px; padding: 6px 8px 6px 6px; align-items: center; }
+  .compact .art { width: 48px; height: 48px; border-radius: 6px; }
+  .compact .art::after { border-radius: 6px; background-size: 16px; }
+  .compact .main { justify-content: center; }
+  .compact .meta { padding-right: 0; }
+  .compact .ctl { position: static; }
+  .compact .bottom, .compact .extra, .compact #x { display: none !important; }
+  .compact .cbar { display: block; }
+  .cbar { display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--track); cursor: pointer; -webkit-app-region: no-drag; }
+  .cbar b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--acc); }
+  .cbar:hover { height: 5px; }
+  .compact .layout { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; }
+  .compact .ctl { flex: none; }
+</style>
+</head>
+<body>
+<div class="card empty" id="card">
+  <div class="art" id="art"></div>
+  <div class="main" id="main">
+    <div class="layout">
+      <div class="meta" style="flex:1;min-width:0">
+        <div class="title" id="title"><span id="titleText"></span></div>
+        <div class="artist" id="artist">&nbsp;</div>
+      </div>
+      <div class="row ctl" id="ctlCompact" hidden></div>
+    </div>
+    <div class="row ctl" id="ctl">
+      <button id="prev"><svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg></button>
+      <button id="play"><svg viewBox="0 0 16 16" id="playIcon"></svg></button>
+      <button id="next"><svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg></button>
+      <span class="spacer"></span>
+      <button id="shuffle" class="tog extra"><svg viewBox="0 0 16 16"><path d="M11.5 2 15 5l-3.5 3V6h-1.3L5.9 11.4A2 2 0 0 1 4.3 12H1v-1.6h3.3l4.3-5.4A2 2 0 0 1 10.2 4h1.3zm0 6L15 11l-3.5 3v-2h-1.3a2 2 0 0 1-1.6-.8l-.9-1.1 1-1.3 1.2 1.6h1.6zM1 4h3.3a2 2 0 0 1 1.6.8l.9 1.1-1 1.3-1.2-1.6H1z"/></svg></button>
+      <button id="repeat" class="tog extra"><svg viewBox="0 0 16 16"><path d="M4 4h8V2l3 3-3 3V6H4a1 1 0 0 0-1 1v1.5H1.5V7A2.5 2.5 0 0 1 4 4.5zm8 8H4v2l-3-3 3-3v2h8a1 1 0 0 0 1-1V7.5h1.5V9A2.5 2.5 0 0 1 12 11.5z"/></svg></button>
+      <button id="like" class="tog" hidden><svg viewBox="0 0 16 16"><path d="M8 14.3 6.9 13.3C3 9.8.5 7.5.5 4.7.5 2.4 2.3.7 4.5.7c1.3 0 2.5.6 3.5 1.6C9 1.3 10.2.7 11.5.7c2.2 0 4 1.7 4 4 0 2.8-2.5 5.1-6.4 8.6z"/></svg></button>
+      <button id="vol" class="tog"><svg viewBox="0 0 16 16" id="volIcon"></svg></button>
+    </div>
+    <div class="row bottom">
+      <span class="time" id="cur">0:00</span>
+      <div class="bar" id="bar"><i><b id="fill" style="width:0"></b></i><span class="tip" id="tip"></span></div>
+      <span class="time r" id="dur">0:00</span>
+      <div class="volpop" id="volpop">
+        <button id="mute"><svg viewBox="0 0 16 16" id="muteIcon"></svg></button>
+        <div class="vbar" id="vbar"><i id="vsteps"></i></div>
+        <span class="vval" id="vval"></span>
+      </div>
+    </div>
+  </div>
+  <div class="cbar" id="cbar"><b id="cfill" style="width:0"></b></div>
+  <button id="x"><svg viewBox="0 0 10 10"><path d="M1 1l8 8M9 1L1 9" stroke="currentColor" stroke-width="1.6"/></svg></button>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const ICON = {
+    play: '<path d="M4 2l10 6-10 6z"/>',
+    pause: '<path d="M3 2h4v12H3zM9 2h4v12H9z"/>',
+    vol0: '<path d="M7.1 1.9C7.5 1.5 8 1.8 8 2.2v11.6c0 .4-.5.7-.9.4L4 11H1.5a.5.5 0 0 1-.5-.5v-5c0-.3.2-.5.5-.5H4zM10.3 5.3l1.7 1.6 1.7-1.6 1 1L13 8l1.7 1.7-1 1L12 9l-1.7 1.7-1-1L11 8 9.3 6.3z"/>',
+    vol1: '<path d="M7.1 1.9C7.5 1.5 8 1.8 8 2.2v11.6c0 .4-.5.7-.9.4L4 11H1.5a.5.5 0 0 1-.5-.5v-5c0-.3.2-.5.5-.5H4zM9.5 5a3 3 0 0 1 0 6V9.5a1.5 1.5 0 0 0 0-3z"/>',
+    vol2: '<path d="M7.1 1.9C7.5 1.5 8 1.8 8 2.2v11.6c0 .4-.5.7-.9.4L4 11H1.5a.5.5 0 0 1-.5-.5v-5c0-.3.2-.5.5-.5H4zM15 8a6 6 0 0 1-5.5 6v-1.5a4.5 4.5 0 0 0 0-9V2A6 6 0 0 1 15 8zm-3 0a3 3 0 0 1-2.5 3V5A3 3 0 0 1 12 8z"/>',
+  };
+  const fmt = (s) => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`; };
+  let T = {}, C = {}, S = { playing: false, pos: 0, dur: 0, volume: 100 };
+  let lastArt = null, lastTitle = null, posAt = 0, posBase = 0, volHold = 0, pendingVol = null, pendingUntil = 0;
+
+  // 10 делений громкости
+  for (let i = 0; i < 10; i++) $('vsteps').appendChild(document.createElement('s'));
+
+  function applyConfig(c) {
+    C = c; T = c.strings || {};
+    document.documentElement.lang = c.lang;
+    document.body.className = [c.size === 'compact' ? 'compact' : '', c.theme === 'light' ? 'light' : '', c.lock ? 'locked' : ''].join(' ');
+    document.body.style.zoom = (c.scale || 100) / 100;
+    const r = document.documentElement.style;
+    r.setProperty('--acc', c.accent || '#ff5500');
+    r.setProperty('--alpha', (c.opacity || 96) / 100);
+    if (c.theme !== 'art') { r.removeProperty('--bg-rgb'); }
+    // В компактном режиме кнопки переезжают в строку с названием
+    const compact = c.size === 'compact';
+    const host = compact ? $('ctlCompact') : $('ctl');
+    for (const id of ['prev', 'play', 'next']) host.insertBefore($(id), compact ? null : $('ctl').querySelector('.spacer'));
+    $('ctlCompact').hidden = !compact;
+    $('ctl').hidden = compact;
+    $('vol').hidden = !c.showVolume;
+    document.querySelectorAll('.extra').forEach((e) => (e.hidden = !c.showExtra || !S.hasExtra));
+    const tt = { prev: 'prev', next: 'next', like: 'like', shuffle: 'shuffle', repeat: 'repeat', vol: 'volume', x: 'hideHint', art: 'openHint' };
+    for (const [id, k] of Object.entries(tt)) $(id).title = T[k] || '';
+    render();
+  }
+
+  function render() {
+    const s = S, has = !!s.title;
+    $('card').classList.toggle('empty', !has);
+    if (s.title !== lastTitle) { lastTitle = s.title; $('titleText').textContent = has ? s.title : (T.nothingPlaying || ''); setupMarquee(); }
+    $('title').title = s.title || '';
+    $('artist').textContent = s.artist || ' ';
+    if (s.art !== lastArt) { lastArt = s.art; $('art').style.backgroundImage = s.art ? `url("${s.art.replace(/"/g, '%22')}")` : ''; }
+    $('playIcon').innerHTML = s.playing ? ICON.pause : ICON.play;
+    $('play').title = s.playing ? T.pause : T.play;
+    $('like').hidden = !s.hasLike || C.size === 'compact';
+    $('like').classList.toggle('on', !!s.liked);
+    $('shuffle').classList.toggle('on', !!s.shuffle);
+    $('repeat').classList.toggle('on', s.repeat && s.repeat !== 'none');
+    $('repeat').classList.toggle('one', s.repeat === 'one');
+    document.querySelectorAll('.extra').forEach((e) => (e.hidden = !C.showExtra || !s.hasExtra));
+    renderVolume();
+    if (C.theme === 'art' && s.artColor) {
+      const { r, g, b } = s.artColor, k = 0.35; // затемняем цвет обложки, чтобы текст читался
+      document.documentElement.style.setProperty('--bg-rgb', `${Math.round(r * k + 12)}, ${Math.round(g * k + 12)}, ${Math.round(b * k + 14)}`);
+    }
+    $('dur').textContent = fmt(s.dur);
+  }
+
+  function renderVolume() {
+    const v = Date.now() < pendingUntil && pendingVol != null ? pendingVol : (S.muted ? 0 : S.volume);
+    const icon = v === 0 ? ICON.vol0 : v < 50 ? ICON.vol1 : ICON.vol2;
+    $('volIcon').innerHTML = icon; $('muteIcon').innerHTML = icon;
+    $('mute').title = S.muted ? T.unmute : T.mute;
+    $('vval').textContent = v + '%';
+    [...$('vsteps').children].forEach((el, i) => el.classList.toggle('on', i < Math.round(v / 10)));
+    $('vol').classList.toggle('on', $('volpop').classList.contains('show'));
+  }
+
+  function setupMarquee() {
+    const box = $('title'), span = $('titleText');
+    box.classList.remove('scroll');
+    requestAnimationFrame(() => {
+      const over = span.scrollWidth - box.clientWidth;
+      if (over > 4) {
+        box.style.setProperty('--shift', `-${over + 8}px`);
+        box.style.setProperty('--dur', `${Math.max(6, over / 18)}s`);
+        box.classList.add('scroll');
+      }
+    });
+  }
+
+  // Плавная полоса прогресса между обновлениями
+  function tick() {
+    const pos = S.playing ? posBase + (performance.now() - posAt) / 1000 : posBase;
+    const p = S.dur ? Math.min(pos / S.dur, 1) * 100 : 0;
+    $('fill').style.width = p + '%';
+    $('cfill').style.width = p + '%';
+    $('cur').textContent = fmt(Math.min(pos, S.dur || pos));
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  sc.onConfig(applyConfig);
+  sc.onState((s) => {
+    S = s; posBase = s.pos || 0; posAt = performance.now();
+    render();
+  });
+
+  for (const id of ['prev', 'play', 'next', 'like', 'shuffle', 'repeat', 'mute']) $(id).onclick = () => sc.send(id);
+  $('x').onclick = () => sc.send('close');
+  $('art').onclick = () => sc.send('open');
+  document.addEventListener('contextmenu', (e) => { e.preventDefault(); sc.send('menu'); });
+
+  function seekFrom(el, e) {
+    const r = el.getBoundingClientRect();
+    const f = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1);
+    if (S.dur) { posBase = f * S.dur; posAt = performance.now(); }
+    sc.send('seek', f);
+  }
+  $('bar').onclick = (e) => seekFrom($('bar'), e);
+  $('cbar').onclick = (e) => seekFrom($('cbar'), e);
+  $('bar').onmousemove = (e) => {
+    const r = $('bar').getBoundingClientRect(), f = (e.clientX - r.left) / r.width;
+    $('tip').style.left = (f * 100) + '%'; $('tip').textContent = fmt(f * S.dur);
+  };
+
+  // Громкость
+  const pop = $('volpop');
+  let hideT;
+  const showPop = (ms) => { if (C.size === 'compact' || !C.showVolume) return; clearTimeout(hideT); pop.classList.add('show'); renderVolume(); if (ms) hideT = setTimeout(hidePop, ms); };
+  const hidePop = () => { if (pop.matches(':hover') || $('vol').matches(':hover')) return; pop.classList.remove('show'); renderVolume(); };
+  $('vol').onmouseenter = () => showPop();
+  $('vol').onclick = () => (pop.classList.contains('show') ? (pop.classList.remove('show'), renderVolume()) : showPop());
+  $('vol').onmouseleave = () => { hideT = setTimeout(hidePop, 600); };
+  pop.onmouseleave = () => { hideT = setTimeout(hidePop, 400); };
+  pop.onmouseenter = () => clearTimeout(hideT);
+  function setVol(v) {
+    v = Math.max(0, Math.min(100, Math.round(v / 10) * 10));
+    pendingVol = v; pendingUntil = Date.now() + 1500;
+    renderVolume();
+    sc.send('volume', v);
+  }
+  let dragging = false;
+  const volFromEvent = (e) => { const r = $('vbar').getBoundingClientRect(); return ((e.clientX - r.left) / r.width) * 100 + 5; };
+  $('vbar').onmousedown = (e) => { dragging = true; setVol(volFromEvent(e)); };
+  window.addEventListener('mousemove', (e) => { if (dragging) setVol(volFromEvent(e)); });
+  window.addEventListener('mouseup', () => (dragging = false));
+  // Колесо над мини-плеером — громкость
+  document.addEventListener('wheel', (e) => {
+    const cur = Date.now() < pendingUntil && pendingVol != null ? pendingVol : (S.muted ? 0 : S.volume);
+    setVol(cur + (e.deltaY < 0 ? 10 : -10));
+    showPop(1200);
+  }, { passive: true });
+
+  sc.send('ready');
+</script>
+</body>
+</html>
