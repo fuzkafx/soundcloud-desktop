@@ -124,15 +124,28 @@ setInterval(() => {
   if ((alive(widget) && widget.isVisible()) || (alive(win) && win.isVisible()) || store.get('discord')) syncState();
 }, 1000);
 
-// Win+D выводит рабочий стол поверх всех окон, даже закреплённых сверху, и мини-плеер сам не возвращается.
-// Пока он показан и закреплён поверх, тихо поднимаем его обратно (без фокуса).
-setInterval(() => {
-  if (!alive(widget) || !widget.isVisible() || !store.get('widgetOnTop')) return;
-  if (alive(menuWin) && menuWin.isVisible()) return;
-  widget.setAlwaysOnTop(false);
-  widget.setAlwaysOnTop(true, 'floating');
-  widget.moveTop();
-}, 1500);
+// Win+D («Показать рабочий стол») прячет все окна, даже закреплённые сверху.
+// Не прячет только окна, принадлежащие самому рабочему столу (так живут гаджеты),
+// поэтому назначаем владельцем мини-плеера окно рабочего стола Progman.
+let pinToDesktop = () => {};
+if (process.platform === 'win32') {
+  try {
+    const koffi = require('koffi');
+    const user32 = koffi.load('user32.dll');
+    // дескрипторы передаём числами, без указателей
+    const FindWindowW = user32.func('intptr __stdcall FindWindowW(const char16_t *cls, const char16_t *name)');
+    const SetWindowLongPtrW = user32.func('intptr __stdcall SetWindowLongPtrW(intptr hwnd, int index, intptr value)');
+    const GWLP_HWNDPARENT = -8;
+    pinToDesktop = (w) => {
+      try {
+        const progman = FindWindowW('Progman', null);
+        if (!progman) return;
+        const hwnd = w.getNativeWindowHandle().readBigInt64LE(0);
+        SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, progman);
+      } catch {}
+    };
+  } catch {}
+}
 
 // ---------- Главное окно ----------
 let pendingMaximize = false, lastBlur = 0;
@@ -325,6 +338,7 @@ function updateWidgetVisibility() {
 function showWidget() {
   if (!alive(widget)) createWidget();
   if (!widget.isVisible()) {
+    pinToDesktop(widget); // каждый раз: после перезапуска Проводника окно рабочего стола новое
     widget.showInactive();
     widget.webContents.send('config', widgetConfig());
     syncState();

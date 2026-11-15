@@ -1,7 +1,7 @@
 {
   "name": "soundcloud-desktop",
   "productName": "SoundCloud Desktop",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Unofficial desktop client for SoundCloud with a mini player widget",
   "author": "fuzkafx",
   "license": "MIT",
@@ -59,6 +59,7 @@
     "electron-builder": "^25.1.8"
   },
   "dependencies": {
-    "@xhayper/discord-rpc": "^1.5.1"
+    "@xhayper/discord-rpc": "^1.5.1",
+    "koffi": "^3.3.8"
   }
 }
