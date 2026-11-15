@@ -6,6 +6,20 @@ Unofficial desktop client for [soundcloud.com](https://soundcloud.com) on Window
 
 > Not affiliated with, endorsed or sponsored by SoundCloud. It is the regular SoundCloud website in its own window, nothing is modified or downloaded.
 
+<p align="center">
+  <img src="docs/widget.gif" alt="Mini player: volume, pause, next track" width="552">
+</p>
+
+<p align="center">
+  <a href="https://github.com/fuzkafx/soundcloud-desktop/releases/latest"><b>⬇ Download for Windows / Скачать для Windows</b></a>
+</p>
+
+![Main window](docs/main-window.png)
+
+<p align="center">
+  <img src="docs/settings.png" alt="Settings" width="420">
+</p>
+
 ---
 
 ## Русский
