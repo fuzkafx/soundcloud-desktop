@@ -1,0 +1,47 @@
+name: Build installer
+
+# Builds the Windows installer on GitHub's servers.
+# Push a tag like v1.0.1 to build and attach the installer to that release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx electron-builder --win nsis --x64 --publish never
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: installer
+          path: dist/*.exe
+          if-no-files-found: error
+
+      # Code signing (SignPath) goes here once the project is accepted:
+      # a signpath/github-action-submit-signing-request step that takes
+      # steps.upload.outputs.artifact-id and returns the signed installer.
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "SoundCloud Desktop ${TAG#v}" --generate-notes
+          gh release upload "$TAG" dist/*.exe --clobber

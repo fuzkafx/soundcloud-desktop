@@ -1,0 +1,41 @@
+name: "Bug / Ошибка"
+description: "Something doesn't work / Что-то не работает"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Please check [open issues](../issues) first.
+        Спасибо! Сначала проверьте, нет ли уже такой [задачи](../issues).
+  - type: textarea
+    id: what
+    attributes:
+      label: "What happened? / Что случилось?"
+      description: "What did you do, what did you expect, what happened instead. / Что делали, что ожидали, что получилось."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Steps to reproduce / Как повторить"
+      placeholder: |
+        1. Open the mini player
+        2. Click ...
+  - type: input
+    id: version
+    attributes:
+      label: "App version / Версия программы"
+      description: "Settings → bottom of the window / Настройки → внизу окна"
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: "Windows version / Версия Windows"
+      placeholder: "Windows 11 24H2"
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "Screenshots / Скриншоты"
+      description: "Optional / Необязательно"

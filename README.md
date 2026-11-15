@@ -29,6 +29,16 @@ Unofficial desktop client for [soundcloud.com](https://soundcloud.com) on Window
 - Запуск вместе с Windows (можно сразу в трей).
 - Интерфейс на русском и английском.
 
+### Настройки
+
+Открываются тремя способами: правой кнопкой по значку в трее → «Настройки…», правой кнопкой по мини-плееру → «Настройки…» или `Ctrl+,` в главном окне.
+
+- **Основное:** язык, что делает крестик (в трей или выход), автозапуск с Windows.
+- **Мини-плеер:** когда показывать, поверх всех окон, прилипание к краям, закрепление положения, регулятор громкости, кнопки «Перемешать» и «Повтор».
+- **Внешний вид:** размер (обычный или компактный), тема, акцентный цвет, непрозрачность, масштаб.
+
+Самое нужное есть и в меню по правому клику на мини-плеере.
+
 ### Горячие клавиши
 
 | Клавиши | Действие |
@@ -61,6 +71,16 @@ To pin it, right-click the running app's taskbar icon → "Pin to taskbar".
 - Start with Windows (optionally straight to the tray).
 - Russian and English UI.
 
+### Settings
+
+Open them from the tray icon (right-click → "Settings…"), by right-clicking the mini player, or with `Ctrl+,` in the main window.
+
+- **General:** language, what the close button does (tray or quit), start with Windows.
+- **Mini player:** when to show it, always on top, snap to edges, lock position, volume control, Shuffle and Repeat buttons.
+- **Appearance:** size (normal or compact), theme, accent color, opacity, scale.
+
+The most used options are also in the mini player's right-click menu.
+
 ### Shortcuts
 
 | Keys | Action |
@@ -83,6 +103,18 @@ npm run dist       # build the installer into dist/
 ```
 
 `npm run icons` regenerates `assets/icon.ico` and the thumbnail button images.
+
+Releases are also built automatically by GitHub Actions when a `v*` tag is pushed (see `.github/workflows/build.yml`).
+
+## Privacy / Приватность
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. It only loads soundcloud.com (and the sign-in pages you choose); what SoundCloud collects is covered by the [SoundCloud privacy policy](https://soundcloud.com/pages/privacy). Settings and your session are stored locally in `%APPDATA%\SoundCloud Desktop`.
+
+Программа ничего не отправляет никуда, кроме самого soundcloud.com и выбранной вами страницы входа. Настройки и вход хранятся только на вашем компьютере в `%APPDATA%\SoundCloud Desktop`.
+
+## Uninstall / Удаление
+
+Windows Settings → Apps → SoundCloud Desktop → Uninstall. / Параметры Windows → Приложения → SoundCloud Desktop → Удалить.
 
 ## License
 
