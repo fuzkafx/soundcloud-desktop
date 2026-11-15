@@ -1,7 +1,7 @@
 {
   "name": "soundcloud-desktop",
   "productName": "SoundCloud Desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Unofficial desktop client for SoundCloud with a mini player widget",
   "author": "fuzkafx",
   "license": "MIT",
@@ -36,11 +36,15 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": false,
       "createStartMenuShortcut": true,
+      "runAfterFinish": true,
       "shortcutName": "SoundCloud",
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
+      "installerSidebar": "assets/installer/sidebar.bmp",
+      "uninstallerSidebar": "assets/installer/sidebar.bmp",
+      "installerHeader": "assets/installer/header.bmp",
       "multiLanguageInstaller": true,
       "installerLanguages": [
         "en_US",
@@ -53,5 +57,8 @@
   "devDependencies": {
     "electron": "^45.3.2",
     "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "@xhayper/discord-rpc": "^1.5.1"
   }
 }

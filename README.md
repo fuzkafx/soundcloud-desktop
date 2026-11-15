@@ -40,6 +40,7 @@ Unofficial desktop client for [soundcloud.com](https://soundcloud.com) on Window
 - Компактный и обычный размер, тёмная, светлая, системная тема или цвет по обложке, свой акцентный цвет, прозрачность и масштаб.
 - Прилипание к краям экрана, закрепление положения, контекстное меню по правому клику.
 - Кнопки управления на превью окна в панели задач, медиаклавиши клавиатуры.
+- Статус «Слушает» в Discord: трек, исполнитель, обложка, время и кнопка «Слушать на SoundCloud». Отключается в настройках.
 - Запуск вместе с Windows (можно сразу в трей).
 - Интерфейс на русском и английском.
 
@@ -82,6 +83,7 @@ To pin it, right-click the running app's taskbar icon → "Pin to taskbar".
 - Normal and compact sizes; dark, light, system or artwork-based theme; custom accent color, opacity and scale.
 - Snaps to screen edges, can be locked in place, right-click menu.
 - Taskbar thumbnail buttons and keyboard media keys.
+- Discord "Listening to" status: track, artist, artwork, time and a "Listen on SoundCloud" button. Can be turned off in settings.
 - Start with Windows (optionally straight to the tray).
 - Russian and English UI.
 

@@ -7,6 +7,7 @@ const DEFAULTS = {
   closeToTray: true,
   autostart: false,
   autostartHidden: true,
+  discord: true, // статус «Слушает» в Discord
 
   widgetOnTray: true,
   widgetOnMinimize: false,

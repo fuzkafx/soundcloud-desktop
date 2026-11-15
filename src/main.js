@@ -1,9 +1,11 @@
-const { app, BrowserWindow, Tray, Menu, shell, nativeImage, ipcMain, screen, nativeTheme, net } = require('electron');
+const { app, BrowserWindow, Tray, shell, nativeImage, ipcMain, screen, nativeTheme, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { dict, resolveLang } = require('./i18n');
 const { createStore } = require('./settings');
 const P = require('./player');
+const { Presence } = require('./discord');
+const presence = new Presence();
 
 const HOME = 'https://soundcloud.com/discover';
 const APP_ID = 'com.github.soundcloud-desktop';
@@ -109,6 +111,7 @@ function syncState() {
   exec(P.READ_STATE).then(async (s) => {
     if (!s || seq !== syncSeq) return;
     state = s;
+    presence.update(s);
     if (s.playing !== lastPlaying) { lastPlaying = s.playing; thumbar(); refreshTray(); }
     if (s.title !== lastTitle) { lastTitle = s.title; refreshTray(); updateWidgetVisibility(); }
     if (!alive(widget) || !widget.isVisible()) return;
@@ -117,8 +120,19 @@ function syncState() {
   }).catch(() => {});
 }
 setInterval(() => {
-  if ((alive(widget) && widget.isVisible()) || (alive(win) && win.isVisible())) syncState();
+  // Discord тоже нужно обновлять, даже когда окно и мини-плеер спрятаны
+  if ((alive(widget) && widget.isVisible()) || (alive(win) && win.isVisible()) || store.get('discord')) syncState();
 }, 1000);
+
+// Win+D выводит рабочий стол поверх всех окон, даже закреплённых сверху, и мини-плеер сам не возвращается.
+// Пока он показан и закреплён поверх, тихо поднимаем его обратно (без фокуса).
+setInterval(() => {
+  if (!alive(widget) || !widget.isVisible() || !store.get('widgetOnTop')) return;
+  if (alive(menuWin) && menuWin.isVisible()) return;
+  widget.setAlwaysOnTop(false);
+  widget.setAlwaysOnTop(true, 'floating');
+  widget.moveTop();
+}, 1500);
 
 // ---------- Главное окно ----------
 let pendingMaximize = false, lastBlur = 0;
@@ -328,17 +342,74 @@ function applyWidgetConfig() {
   syncState();
 }
 
-function widgetMenu() {
-  return Menu.buildFromTemplate([
+// ---------- Своё меню (системное меню Windows не стилизуется) ----------
+let menuWin = null, menuActions = new Map(), menuAnchor = null;
+function createMenuWin() {
+  menuWin = new BrowserWindow({
+    width: 260, height: 300, show: false, frame: false, transparent: true, resizable: false,
+    skipTaskbar: true, alwaysOnTop: true, hasShadow: false, focusable: true, fullscreenable: false,
+    webPreferences: { preload: path.join(__dirname, 'menu-preload.js'), contextIsolation: true, sandbox: true },
+  });
+  menuWin.setAlwaysOnTop(true, 'pop-up-menu');
+  menuWin.loadFile(path.join(__dirname, 'menu.html'));
+  menuWin.on('blur', closeMenu);
+  menuWin.on('close', (e) => { if (!quitting) { e.preventDefault(); closeMenu(); } });
+}
+function closeMenu() { if (alive(menuWin) && menuWin.isVisible()) menuWin.hide(); }
+// items: { label, click, type?: 'checkbox' | 'separator' | 'header', checked?, enabled? }
+function showMenu(items) {
+  if (!alive(menuWin)) createMenuWin();
+  menuActions = new Map();
+  const payload = items.map((it, i) => {
+    if (it.click) menuActions.set(i, it.click);
+    return { id: i, label: it.label, type: it.type, checked: it.checked, enabled: it.enabled };
+  });
+  menuAnchor = screen.getCursorScreenPoint();
+  const cfg = widgetConfig();
+  const send = () => menuWin.webContents.send('menu:show', { items: payload, theme: cfg.theme === 'light' ? 'light' : 'dark', accent: cfg.accent });
+  if (menuWin.webContents.isLoading()) menuWin.webContents.once('did-finish-load', send); else send();
+}
+ipcMain.on('menu:size', (_e, w, h) => {
+  if (!alive(menuWin) || !menuAnchor) return;
+  // 8px прозрачного поля под тень: смещаем окно, чтобы панель встала точно у курсора
+  const wa = screen.getDisplayNearestPoint(menuAnchor).workArea;
+  let x = menuAnchor.x - 8, y = menuAnchor.y - 8;
+  if (x + w > wa.x + wa.width) x = menuAnchor.x - w + 8;   // не влезает справа — открываем влево
+  if (y + h > wa.y + wa.height) y = menuAnchor.y - h + 8;  // не влезает снизу (трей) — открываем вверх
+  x = Math.max(wa.x, x); y = Math.max(wa.y, y);
+  menuWin.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) });
+  menuWin.show(); menuWin.focus();
+});
+ipcMain.on('menu:pick', (_e, id) => { const fn = menuActions.get(id); closeMenu(); if (fn) setTimeout(fn, 0); });
+ipcMain.on('menu:close', closeMenu);
+
+function widgetMenuItems() {
+  return [
     { label: t('open'), click: show },
     { label: t('settings'), click: openSettings },
     { type: 'separator' },
-    { label: t('widgetOnTop'), type: 'checkbox', checked: store.get('widgetOnTop'), click: (i) => setSetting('widgetOnTop', i.checked) },
-    { label: t('widgetLock'), type: 'checkbox', checked: store.get('widgetLock'), click: (i) => setSetting('widgetLock', i.checked) },
+    { label: t('widgetOnTop'), type: 'checkbox', checked: store.get('widgetOnTop'), click: () => setSetting('widgetOnTop', !store.get('widgetOnTop')) },
+    { label: t('widgetLock'), type: 'checkbox', checked: store.get('widgetLock'), click: () => setSetting('widgetLock', !store.get('widgetLock')) },
     { label: store.get('widgetSize') === 'compact' ? t('sizeNormal') : t('sizeCompact'), click: () => setSetting('widgetSize', store.get('widgetSize') === 'compact' ? 'normal' : 'compact') },
     { type: 'separator' },
     { label: t('hideWidget'), click: () => { manualWidget = false; hideWidget(); } },
-  ]);
+  ];
+}
+function trayMenuItems() {
+  const widgetVisible = !!(alive(widget) && widget.isVisible());
+  return [
+    ...(state.title ? [{ type: 'header', label: state.title + (state.artist ? ' — ' + state.artist : '') }, { type: 'separator' }] : []),
+    { label: state.playing ? t('pause') : t('play'), click: playPause },
+    { label: t('next'), click: next },
+    { label: t('prev'), click: prev },
+    { type: 'separator' },
+    { label: t('open'), click: show },
+    { label: widgetVisible ? t('hideWidget') : t('showWidget'), click: () => { if (widgetVisible) { manualWidget = false; hideWidget(); } else { manualWidget = true; showWidget(); } } },
+    { label: t('settings'), click: openSettings },
+    { label: t('resetWidgetPos'), click: resetWidgetPos },
+    { type: 'separator' },
+    { label: t('quit'), click: () => { quitting = true; app.quit(); } },
+  ];
 }
 
 ipcMain.on('widget', (_e, cmd, arg) => {
@@ -354,7 +425,7 @@ ipcMain.on('widget', (_e, cmd, arg) => {
     case 'seek': act(P.seekJs(arg), 250); break;
     case 'open': show(); break;
     case 'close': manualWidget = false; hideWidget(); break;
-    case 'menu': if (alive(widget)) widgetMenu().popup({ window: widget }); break;
+    case 'menu': if (alive(widget)) showMenu(widgetMenuItems()); break;
     case 'ready': widget.webContents.send('config', widgetConfig()); syncState(); break;
   }
 });
@@ -383,7 +454,8 @@ function applyAutostart() {
 }
 function setSetting(k, v) {
   if (!store.set(k, v)) return;
-  if (k === 'language') { lang = resolveLang(v, app.getLocale()); refreshTray(); thumbar(); if (alive(settingsWin)) settingsWin.setTitle(t('settingsTitle')); }
+  if (k === 'language') { lang = resolveLang(v, app.getLocale()); refreshTray(); thumbar(); presence.setButtonLabel(t('discordButton')); if (alive(settingsWin)) settingsWin.setTitle(t('settingsTitle')); }
+  if (k === 'discord') { presence.setEnabled(!!v); presence.update(state); }
   if (k === 'autostart' || k === 'autostartHidden') applyAutostart();
   if (k.startsWith('widget') || k === 'language') { applyWidgetConfig(); updateWidgetVisibility(); }
   if (alive(settingsWin)) settingsWin.webContents.send('settings', settingsPayload());
@@ -402,29 +474,16 @@ function resetWidgetPos() {
 nativeTheme.on('updated', () => { applyWidgetConfig(); });
 
 // ---------- Трей ----------
+// Меню трея строится в момент открытия, так что здесь только подсказка
 function refreshTray() {
   if (!tray) return;
-  const widgetVisible = !!(alive(widget) && widget.isVisible());
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: t('open'), click: show },
-    { label: widgetVisible ? t('hideWidget') : t('showWidget'), click: () => { if (widgetVisible) { manualWidget = false; hideWidget(); } else { manualWidget = true; showWidget(); } } },
-    { type: 'separator' },
-    ...(state.title ? [{ label: (state.title + (state.artist ? ' — ' + state.artist : '')).slice(0, 60), enabled: false }] : []),
-    { label: state.playing ? t('pause') : t('play'), click: playPause },
-    { label: t('next'), click: next },
-    { label: t('prev'), click: prev },
-    { type: 'separator' },
-    { label: t('settings'), click: openSettings },
-    { label: t('resetWidgetPos'), click: resetWidgetPos },
-    { type: 'separator' },
-    { label: t('quit'), click: () => { quitting = true; app.quit(); } },
-  ]));
+  tray.setToolTip(state.title ? (state.title + (state.artist ? ' — ' + state.artist : '')).slice(0, 127) : 'SoundCloud');
 }
 
 function createTray() {
   tray = new Tray(iconPath);
-  tray.setToolTip('SoundCloud');
   refreshTray();
+  tray.on('right-click', () => showMenu(trayMenuItems()));
   tray.on('click', () => {
     const wasActive = win.isFocused() || Date.now() - lastBlur < 400;
     if (win.isVisible() && !win.isMinimized() && wasActive) win.hide(); else show();
@@ -432,11 +491,13 @@ function createTray() {
 }
 
 app.on('second-instance', show);
-app.on('before-quit', () => { quitting = true; saveWinState(); });
+app.on('before-quit', () => { quitting = true; saveWinState(); presence.disconnect(); });
 
 app.whenReady().then(() => {
   lang = resolveLang(store.get('language'), app.getLocale());
   createWindow();
   createTray();
   applyAutostart();
+  presence.setButtonLabel(t('discordButton'));
+  presence.setEnabled(!!store.get('discord'));
 });
