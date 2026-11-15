@@ -1,7 +1,7 @@
 {
   "name": "soundcloud-desktop",
   "productName": "SoundCloud Desktop",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Unofficial desktop client for SoundCloud with a mini player widget",
   "author": "fuzkafx",
   "license": "MIT",

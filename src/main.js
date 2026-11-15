@@ -132,10 +132,26 @@ setInterval(() => {
 let makeToolWindow = () => {};
 let raiseTopmost = () => {};
 let desktopIsForeground = () => false;
+let winState = () => ({});           // что Windows сделала с окном: свернула, скрыла, «замаскировала»
+let showNoActivate = () => {};       // вернуть свёрнутое окно, не забирая фокус
 if (process.platform === 'win32') {
   try {
     const koffi = require('koffi');
     const user32 = koffi.load('user32.dll');
+    const dwmapi = koffi.load('dwmapi.dll');
+    const IsIconic = user32.func('bool __stdcall IsIconic(intptr hwnd)');
+    const IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(intptr hwnd)');
+    const ShowWindow = user32.func('bool __stdcall ShowWindow(intptr hwnd, int cmd)');
+    const DwmGetWindowAttribute = dwmapi.func('int __stdcall DwmGetWindowAttribute(intptr hwnd, uint attr, void *out, uint size)');
+    const cloakBuf = Buffer.alloc(4);
+    winState = (w) => {
+      try {
+        const h = w.getNativeWindowHandle().readBigInt64LE(0);
+        DwmGetWindowAttribute(h, 14, cloakBuf, 4); // DWMWA_CLOAKED
+        return { iconic: IsIconic(h), visible: IsWindowVisible(h), cloaked: cloakBuf.readUInt32LE(0) };
+      } catch (e) { return { error: String(e) }; }
+    };
+    showNoActivate = (w) => { try { ShowWindow(w.getNativeWindowHandle().readBigInt64LE(0), 4); } catch {} }; // SW_SHOWNOACTIVATE
     // дескрипторы передаём числами, без указателей
     const GetWindowLongPtrW = user32.func('intptr __stdcall GetWindowLongPtrW(intptr hwnd, int index)');
     const SetWindowLongPtrW = user32.func('intptr __stdcall SetWindowLongPtrW(intptr hwnd, int index, intptr value)');
@@ -164,10 +180,39 @@ if (process.platform === 'win32') {
     };
   } catch {}
 }
+// Журнал для диагностики Win+D: %APPDATA%\SoundCloud Desktop\debug.log (не больше ~64 КБ)
+const debugFile = path.join(app.getPath('userData'), 'debug.log');
+function debugLog(msg) {
+  try {
+    if (fs.existsSync(debugFile) && fs.statSync(debugFile).size > 64 * 1024) fs.writeFileSync(debugFile, '');
+    fs.appendFileSync(debugFile, `${new Date().toISOString()} ${msg}\n`);
+  } catch {}
+}
+
+// Мини-плеер должен быть на экране: вернуть его, если Windows его свернула
+// (так делает Win+D даже с окнами без кнопки сворачивания)
+let restoring = false, lastRestoreLog = '';
+let widgetWanted = false; // мини-плеер должен быть на экране (мы его показали и не прятали сами)
+function restoreWidget(reason) {
+  if (!alive(widget) || restoring || !widgetWanted) return;
+  restoring = true;
+  const line = `restore (${reason}) ${JSON.stringify(winState(widget))}`;
+  if (line !== lastRestoreLog) { debugLog(line); lastRestoreLog = line; }
+  showNoActivate(widget);
+  if (store.get('widgetOnTop')) raiseTopmost(widget);
+  setTimeout(() => { restoring = false; }, 300);
+}
+
 let wasDesktop = false;
 setInterval(() => {
+  if (!alive(widget) || !widgetWanted) { wasDesktop = false; return; }
   const now = desktopIsForeground();
-  if (now && !wasDesktop && alive(widget) && widget.isVisible() && store.get('widgetOnTop')) raiseTopmost(widget);
+  const s = winState(widget);
+  if (now !== wasDesktop) debugLog(`desktop foreground=${now} widget=${JSON.stringify(s)} electronVisible=${widget.isVisible()} minimized=${widget.isMinimized()}`);
+  // свёрнут, скрыт системой или «замаскирован» — возвращаем
+  // (маскировку без Win+D не трогаем: так Windows прячет окна на других виртуальных столах)
+  if (s.iconic || s.visible === false || (now && s.cloaked)) restoreWidget(now ? 'desktop' : 'poll');
+  else if (now && !wasDesktop && store.get('widgetOnTop')) raiseTopmost(widget);
   wasDesktop = now;
 }, 500);
 
@@ -342,7 +387,10 @@ function createWidget() {
       store.set('widgetPos', { x, y });
     }, 250);
   });
-  widget.on('close', (e) => { if (!quitting) { e.preventDefault(); manualWidget = false; widget.hide(); } });
+  widget.on('close', (e) => { if (!quitting) { e.preventDefault(); manualWidget = false; widgetWanted = false; widget.hide(); } });
+  // Win+D сворачивает окна, даже без кнопки сворачивания: сразу возвращаем мини-плеер
+  widget.on('minimize', () => setTimeout(() => restoreWidget('minimize event'), 50));
+  widget.on('hide', () => { if (widgetWanted) debugLog(`hide event while wanted ${JSON.stringify(winState(widget))}`); });
 }
 
 // manualWidget: пользователь открыл мини-плеер сам (из трея) — не прятать автоматически
@@ -361,6 +409,7 @@ function updateWidgetVisibility() {
 }
 function showWidget() {
   if (!alive(widget)) createWidget();
+  widgetWanted = true;
   if (!widget.isVisible()) {
     makeToolWindow(widget);
     widget.showInactive();
@@ -369,7 +418,7 @@ function showWidget() {
   }
   refreshTray();
 }
-function hideWidget() { if (alive(widget) && widget.isVisible()) widget.hide(); refreshTray(); }
+function hideWidget() { widgetWanted = false; if (alive(widget) && widget.isVisible()) widget.hide(); refreshTray(); }
 function applyWidgetConfig() {
   if (!alive(widget)) return;
   const [w, h] = widgetSize();
