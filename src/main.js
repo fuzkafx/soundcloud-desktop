@@ -9,11 +9,20 @@ const HOME = 'https://soundcloud.com/discover';
 const APP_ID = 'com.github.soundcloud-desktop';
 const ASSETS = path.join(__dirname, '..', 'assets');
 // Обычный Chrome UA, чтобы вход через Google/Apple не блокировался как «встроенный браузер»
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+// Версия Chrome берётся из встроенного Chromium, чтобы UA совпадал с реальными возможностями браузера
+const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome.split('.')[0]}.0.0.0 Safari/537.36`;
+app.userAgentFallback = UA;
 
 // Хосты, которые открываются внутри приложения (остальное — в системном браузере)
-const INTERNAL = [/(^|\.)soundcloud\.com$/, /(^|\.)sndcdn\.com$/, /(^|\.)google\.com$/, /(^|\.)apple\.com$/, /(^|\.)facebook\.com$/];
+const INTERNAL = [
+  /(^|\.)soundcloud\.com$/, /(^|\.)sndcdn\.com$/,
+  // вход через Google / Apple / Facebook
+  /(^|\.)google\.com$/, /(^|\.)google\.[a-z.]+$/, /(^|\.)googleusercontent\.com$/, /(^|\.)gstatic\.com$/, /(^|\.)youtube\.com$/,
+  /(^|\.)apple\.com$/, /(^|\.)facebook\.com$/, /(^|\.)fbcdn\.net$/,
+];
 const isInternal = (url) => {
+  // всплывающее окно входа сначала открывается пустым (about:blank), потом уходит на страницу провайдера
+  if (!url || url === 'about:blank' || url.startsWith('about:')) return true;
   try { return INTERNAL.some((r) => r.test(new URL(url).hostname)); } catch { return false; }
 };
 
@@ -132,6 +141,8 @@ function createWindow() {
     },
   });
   win.setMenuBarVisibility(false);
+  // UA обычного Chrome для всей сессии, включая всплывающие окна входа (Google блокирует «Electron»)
+  win.webContents.session.setUserAgent(UA);
   win.webContents.setUserAgent(UA);
   win.loadURL(HOME);
   win.once('ready-to-show', () => {
@@ -151,10 +162,26 @@ function createWindow() {
   // Ссылки: SoundCloud и логин — внутри, всё прочее — в браузере по умолчанию
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isInternal(url)) {
-      return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, icon: iconPath, webPreferences: { partition: 'persist:soundcloud' } } };
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 520, height: 720, parent: win, autoHideMenuBar: true, icon: iconPath, backgroundColor: '#ffffff',
+          webPreferences: { partition: 'persist:soundcloud', contextIsolation: true, sandbox: true },
+        },
+      };
     }
-    shell.openExternal(url);
+    if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+  // Во всплывающих окнах входа: тот же UA, внешние ссылки — в браузер
+  win.webContents.on('did-create-window', (child) => {
+    child.setMenuBarVisibility(false);
+    child.webContents.setUserAgent(UA);
+    child.webContents.setWindowOpenHandler(({ url }) => {
+      if (isInternal(url)) return { action: 'allow' };
+      if (/^https?:/i.test(url)) shell.openExternal(url);
+      return { action: 'deny' };
+    });
   });
   win.webContents.on('will-navigate', (e, url) => {
     if (!isInternal(url)) { e.preventDefault(); shell.openExternal(url); }
