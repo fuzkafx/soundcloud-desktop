@@ -18,6 +18,10 @@ Unofficial desktop client for [soundcloud.com](https://soundcloud.com) on Window
 
 <p align="center">
   <img src="docs/settings.png" alt="Settings" width="420">
+</p>
+
+<p align="center">
+  <img src="docs/menu.png" alt="Mini player menu" width="221">
   &nbsp;&nbsp;
   <img src="docs/discord.png" alt="Discord status: listening to a track" width="336">
 </p>
