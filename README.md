@@ -133,3 +133,5 @@ Windows Settings → Apps → SoundCloud Desktop → Uninstall. / Парамет
 ## License
 
 [MIT](LICENSE)
+
+The mini player and settings UI were polished with [unslop](https://github.com/heydamir/unslop) by Damir Sokolovsky ([@heydamir](https://x.com/heydamir)).

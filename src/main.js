@@ -17,7 +17,8 @@ app.userAgentFallback = UA;
 const INTERNAL = [
   /(^|\.)soundcloud\.com$/, /(^|\.)sndcdn\.com$/,
   // вход через Google / Apple / Facebook
-  /(^|\.)google\.com$/, /(^|\.)google\.[a-z.]+$/, /(^|\.)googleusercontent\.com$/, /(^|\.)gstatic\.com$/, /(^|\.)youtube\.com$/,
+  // только google.com и национальные зоны вида google.ru / google.com.tr / google.co.uk
+  /(^|\.)google\.com$/, /(^|\.)google\.(com?\.)?[a-z]{2}$/, /(^|\.)googleusercontent\.com$/, /(^|\.)gstatic\.com$/, /(^|\.)youtube\.com$/,
   /(^|\.)apple\.com$/, /(^|\.)facebook\.com$/, /(^|\.)fbcdn\.net$/,
 ];
 const isInternal = (url) => {
@@ -63,54 +64,70 @@ const playPause = () => act(P.playPause);
 const next = () => act(P.next, 400);
 const prev = () => act(P.prev, 400);
 
+// Сайт меняет громкость только шагами по 10%. Если текущее значение не кратно 10
+// (выставлено ползунком SoundCloud), первый шаг выравнивает его к ближайшему делению.
 let volBusy = Promise.resolve();
 function setVolume(target) {
   target = Math.round(Math.min(Math.max(+target || 0, 0), 100) / 10) * 10;
   volBusy = volBusy.then(async () => {
-    const s = (await exec(P.READ_STATE)) || state;
-    if (s.muted && target > 0) await exec(P.mute);
-    const steps = Math.round((target - s.volume) / 10);
-    if (steps) await exec(P.volumeStepsJs(steps));
-    state.volume = target;
+    let s = await exec(P.READ_STATE);
+    if (!s) return;
+    if (s.muted && target > 0) {
+      await exec(P.mute);
+      s = (await exec(P.READ_STATE)) || s; // громкость после включения звука, а не та, что была при выключенном
+    }
+    for (let guard = 0; guard < 12 && s.volume !== target; guard++) {
+      const diff = target - s.volume;
+      const steps = Math.sign(diff) * Math.max(1, Math.round(Math.abs(diff) / 10));
+      await exec(P.volumeStepsJs(steps));
+      const after = await exec(P.READ_STATE);
+      if (!after || after.volume === s.volume) break; // упёрлись в 0 или 100
+      s = after;
+    }
     syncState();
-  });
+  }).catch(() => {});
 }
-const nudgeVolume = (d) => setVolume((state.volume || 0) + d * 10);
 
-// Цвет по обложке: уменьшаем картинку до 1×1 пикселя
-const artColors = new Map();
+// Цвет по обложке: уменьшаем картинку до 1×1 пикселя. Храним только последний цвет.
+let artCache = { url: null, color: null };
 async function artColor(url) {
   if (!url) return null;
-  if (artColors.has(url)) return artColors.get(url);
+  if (artCache.url === url) return artCache.color;
   try {
     const res = await net.fetch(url);
     const img = nativeImage.createFromBuffer(Buffer.from(await res.arrayBuffer())).resize({ width: 1, height: 1, quality: 'good' });
     const [b, g, r] = img.toBitmap();
-    const c = { r, g, b };
-    artColors.set(url, c);
-    return c;
+    artCache = { url, color: { r, g, b } };
+    return artCache.color;
   } catch { return null; }
 }
 
-let lastPlaying = null, lastTitle = null;
+// Номер запроса: ответ старого опроса, пришедший после нового, отбрасываем
+let lastPlaying = null, lastTitle = null, syncSeq = 0;
 function syncState() {
+  const seq = ++syncSeq;
   exec(P.READ_STATE).then(async (s) => {
-    if (!s) return;
+    if (!s || seq !== syncSeq) return;
     state = s;
     if (s.playing !== lastPlaying) { lastPlaying = s.playing; thumbar(); refreshTray(); }
     if (s.title !== lastTitle) { lastTitle = s.title; refreshTray(); updateWidgetVisibility(); }
-    if (alive(widget) && widget.isVisible()) {
-      if (store.get('widgetTheme') === 'art') s.artColor = await artColor(s.art);
-      widget.webContents.send('state', s);
-    }
-  });
+    if (!alive(widget) || !widget.isVisible()) return;
+    if (store.get('widgetTheme') === 'art') s.artColor = await artColor(s.art);
+    if (seq === syncSeq && alive(widget)) widget.webContents.send('state', s);
+  }).catch(() => {});
 }
 setInterval(() => {
   if ((alive(widget) && widget.isVisible()) || (alive(win) && win.isVisible())) syncState();
 }, 1000);
 
 // ---------- Главное окно ----------
-function show() { if (!alive(win)) return; if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+let pendingMaximize = false, lastBlur = 0;
+function show() {
+  if (!alive(win)) return;
+  if (win.isMinimized()) win.restore();
+  if (pendingMaximize) { pendingMaximize = false; win.maximize(); }
+  win.show(); win.focus();
+}
 
 function thumbar() {
   if (!alive(win)) return;
@@ -146,7 +163,8 @@ function createWindow() {
   win.webContents.setUserAgent(UA);
   win.loadURL(HOME);
   win.once('ready-to-show', () => {
-    if (startHidden) { if (store.get('widgetOnTray')) showWidget(); return; }
+    // при запуске в трей разворачиваем при первом показе: maximize() скрытого окна его показывает
+    if (startHidden) { pendingMaximize = !!s.maximized; if (store.get('widgetOnTray')) showWidget(); return; }
     if (s.maximized) win.maximize();
     win.show();
   });
@@ -202,6 +220,11 @@ function createWindow() {
     if (!quitting && store.get('closeToTray')) { e.preventDefault(); win.hide(); }
     else { quitting = true; app.quit(); }
   });
+  // Выключение / выход из Windows: не прятаться в трей, иначе программа блокирует завершение работы
+  win.on('query-session-end', () => { quitting = true; });
+  win.on('session-end', () => { quitting = true; saveWinState(); app.quit(); });
+  // Клик по трею забирает фокус у окна раньше, чем приходит событие click: запоминаем, когда окно его потеряло
+  win.on('blur', () => { lastBlur = Date.now(); });
   win.on('hide', updateWidgetVisibility);
   win.on('minimize', updateWidgetVisibility);
   win.on('restore', updateWidgetVisibility);
@@ -209,7 +232,8 @@ function createWindow() {
 }
 
 // ---------- Мини-плеер ----------
-const SIZES = { normal: [384, 116], compact: [320, 68] };
+// размер окна = карточка + 4px прозрачного поля с каждой стороны
+const SIZES = { normal: [384, 116], compact: [320, 72] };
 function widgetSize() {
   const [w, h] = SIZES[store.get('widgetSize')] || SIZES.normal;
   const k = (store.get('widgetScale') || 100) / 100;
@@ -327,7 +351,6 @@ ipcMain.on('widget', (_e, cmd, arg) => {
     case 'repeat': act(P.repeat); break;
     case 'mute': act(P.mute); break;
     case 'volume': setVolume(arg); break;
-    case 'volumeStep': nudgeVolume(arg > 0 ? 1 : -1); break;
     case 'seek': act(P.seekJs(arg), 250); break;
     case 'open': show(); break;
     case 'close': manualWidget = false; hideWidget(); break;
@@ -342,7 +365,7 @@ function openSettings() {
   settingsWin = new BrowserWindow({
     width: 520, height: 720, minWidth: 420, minHeight: 400,
     title: t('settingsTitle'), icon: iconPath, autoHideMenuBar: true,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1b1b1d' : '#f6f6f7',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#141415' : '#fafafa',
     webPreferences: { preload: path.join(__dirname, 'settings-preload.js'), contextIsolation: true, sandbox: true },
   });
   settingsWin.setMenuBarVisibility(false);
@@ -402,7 +425,10 @@ function createTray() {
   tray = new Tray(iconPath);
   tray.setToolTip('SoundCloud');
   refreshTray();
-  tray.on('click', () => (win.isVisible() && !win.isMinimized() && win.isFocused() ? win.hide() : show()));
+  tray.on('click', () => {
+    const wasActive = win.isFocused() || Date.now() - lastBlur < 400;
+    if (win.isVisible() && !win.isMinimized() && wasActive) win.hide(); else show();
+  });
 }
 
 app.on('second-instance', show);
