@@ -131,6 +131,7 @@ setInterval(() => {
 // (Назначать владельцем окно рабочего стола нельзя: такое окно всегда оказывается под остальными.)
 let makeToolWindow = () => {};
 let raiseTopmost = () => {};
+let dropTopmost = () => {};
 let desktopIsForeground = () => false;
 let winState = () => ({});           // что Windows сделала с окном: свернула, скрыла, «замаскировала»
 let showNoActivate = () => {};       // вернуть свёрнутое окно, не забирая фокус
@@ -176,6 +177,7 @@ if (process.platform === 'win32') {
       } catch {}
     };
     raiseTopmost = (w) => { try { SetWindowPos(hwndOf(w), HWND_TOPMOST, 0, 0, 0, 0, SWP | 0x0040); } catch {} }; // + SHOWWINDOW
+    dropTopmost = (w) => { try { SetWindowPos(hwndOf(w), -2, 0, 0, 0, 0, SWP); } catch {} }; // HWND_NOTOPMOST
     const buf = Buffer.alloc(128);
     desktopIsForeground = () => {
       try {
@@ -209,18 +211,27 @@ function restoreWidget(reason) {
   setTimeout(() => { restoring = false; }, 300);
 }
 
-let wasDesktop = false;
+// Win+D кладёт рабочий стол поверх всех обычных окон. Пока рабочий стол на переднем плане,
+// поднимаем мини-плеер поверх, даже если «Поверх всех окон» выключено (как гаджеты),
+// а когда пользователь переключился в любое окно — возвращаем обычный режим.
+let wasDesktop = false, tempTop = false;
 setInterval(() => {
   if (!alive(widget) || !widgetWanted) { wasDesktop = false; return; }
   const now = desktopIsForeground();
   const s = winState(widget);
-  if (now !== wasDesktop) debugLog(`desktop foreground=${now} widget=${JSON.stringify(s)} electronVisible=${widget.isVisible()} minimized=${widget.isMinimized()}`);
+  if (now !== wasDesktop) debugLog(`desktop foreground=${now} onTop=${store.get('widgetOnTop')} widget=${JSON.stringify(s)}`);
   // свёрнут, скрыт системой или «замаскирован» — возвращаем
   // (маскировку без Win+D не трогаем: так Windows прячет окна на других виртуальных столах)
   if (s.iconic || s.visible === false || (now && s.cloaked)) restoreWidget(now ? 'desktop' : 'poll');
-  else if (now && !wasDesktop && store.get('widgetOnTop')) raiseTopmost(widget);
+  if (now && !wasDesktop) {
+    raiseTopmost(widget);
+    tempTop = !store.get('widgetOnTop');
+  } else if (!now && wasDesktop && tempTop) {
+    tempTop = false;
+    if (!store.get('widgetOnTop')) dropTopmost(widget);
+  }
   wasDesktop = now;
-}, 500);
+}, 300);
 
 // ---------- Главное окно ----------
 let pendingMaximize = false, lastBlur = 0;
