@@ -452,7 +452,7 @@ function createMenuWin() {
   menuWin = new BrowserWindow({
     width: 260, height: 300, show: false, frame: false, transparent: true, resizable: false,
     skipTaskbar: true, alwaysOnTop: true, hasShadow: false, focusable: true, fullscreenable: false,
-    webPreferences: { preload: path.join(__dirname, 'menu-preload.js'), contextIsolation: true, sandbox: true },
+    webPreferences: { preload: path.join(__dirname, 'menu-preload.js'), contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
   menuWin.setAlwaysOnTop(true, 'pop-up-menu');
   menuWin.loadFile(path.join(__dirname, 'menu.html'));
@@ -472,9 +472,19 @@ function showMenu(items) {
   menuAnchor = screen.getCursorScreenPoint();
   const cfg = widgetConfig();
   const send = () => menuWin.webContents.send('menu:show', { items: payload, theme: cfg.theme === 'light' ? 'light' : 'dark', accent: cfg.accent });
+  menuSized = false;
   if (menuWin.webContents.isLoading()) menuWin.webContents.once('did-finish-load', send); else send();
+  // запасной вариант: если меню не сообщило размер, показываем с прошлым размером
+  clearTimeout(menuFallback);
+  menuFallback = setTimeout(() => {
+    if (menuSized || !alive(menuWin)) return;
+    debugLog('menu size not received, showing with last size');
+    placeMenu(lastMenuSize[0], lastMenuSize[1]);
+  }, 300);
 }
-ipcMain.on('menu:size', (_e, w, h) => {
+let menuSized = false, menuFallback = null, lastMenuSize = [252, 380];
+ipcMain.on('menu:size', (_e, w, h) => { menuSized = true; lastMenuSize = [w, h]; placeMenu(w, h); });
+function placeMenu(w, h) {
   if (!alive(menuWin) || !menuAnchor) return;
   // 8px прозрачного поля под тень: смещаем окно, чтобы панель встала точно у курсора
   const wa = screen.getDisplayNearestPoint(menuAnchor).workArea;
@@ -502,7 +512,7 @@ ipcMain.on('menu:size', (_e, w, h) => {
     }
     wasDown = down;
   }, 40);
-});
+}
 ipcMain.on('menu:pick', (_e, id) => { const fn = menuActions.get(id); closeMenu(); if (fn) setTimeout(fn, 0); });
 ipcMain.on('menu:close', closeMenu);
 

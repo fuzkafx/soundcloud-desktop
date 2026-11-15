@@ -74,11 +74,10 @@
       panel.appendChild(el);
     }
     idx = -1;
-    requestAnimationFrame(() => {
-      const r = panel.getBoundingClientRect();
-      menu.size(Math.ceil(r.width) + 16, Math.ceil(r.height) + 16);
-      requestAnimationFrame(() => panel.classList.add('in'));
-    });
+    // Размер меряем сразу: в скрытом окне requestAnimationFrame не срабатывает
+    const r = panel.getBoundingClientRect();
+    menu.size(Math.ceil(r.width) + 16, Math.ceil(r.height) + 16);
+    setTimeout(() => panel.classList.add('in'), 16);
   }
   function setActive(n) {
     items.forEach((x, i) => x.el.classList.toggle('active', i === n));
