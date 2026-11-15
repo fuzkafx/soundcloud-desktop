@@ -134,6 +134,8 @@ let raiseTopmost = () => {};
 let desktopIsForeground = () => false;
 let winState = () => ({});           // что Windows сделала с окном: свернула, скрыла, «замаскировала»
 let showNoActivate = () => {};       // вернуть свёрнутое окно, не забирая фокус
+let forceForeground = () => false;   // вывести окно на передний план (для меню из трея)
+let mouseDown = () => false;         // нажата ли сейчас левая или правая кнопка мыши
 if (process.platform === 'win32') {
   try {
     const koffi = require('koffi');
@@ -152,6 +154,10 @@ if (process.platform === 'win32') {
       } catch (e) { return { error: String(e) }; }
     };
     showNoActivate = (w) => { try { ShowWindow(w.getNativeWindowHandle().readBigInt64LE(0), 4); } catch {} }; // SW_SHOWNOACTIVATE
+    const SetForegroundWindow = user32.func('bool __stdcall SetForegroundWindow(intptr hwnd)');
+    const GetAsyncKeyState = user32.func('short __stdcall GetAsyncKeyState(int key)');
+    forceForeground = (w) => { try { return SetForegroundWindow(w.getNativeWindowHandle().readBigInt64LE(0)); } catch { return false; } };
+    mouseDown = () => { try { return (GetAsyncKeyState(0x01) & 0x8000) !== 0 || (GetAsyncKeyState(0x02) & 0x8000) !== 0; } catch { return false; } };
     // дескрипторы передаём числами, без указателей
     const GetWindowLongPtrW = user32.func('intptr __stdcall GetWindowLongPtrW(intptr hwnd, int index)');
     const SetWindowLongPtrW = user32.func('intptr __stdcall SetWindowLongPtrW(intptr hwnd, int index, intptr value)');
@@ -430,7 +436,7 @@ function applyWidgetConfig() {
 }
 
 // ---------- Своё меню (системное меню Windows не стилизуется) ----------
-let menuWin = null, menuActions = new Map(), menuAnchor = null;
+let menuWin = null, menuActions = new Map(), menuAnchor = null, menuShownAt = 0, menuOutsideTimer = null;
 function createMenuWin() {
   menuWin = new BrowserWindow({
     width: 260, height: 300, show: false, frame: false, transparent: true, resizable: false,
@@ -439,7 +445,8 @@ function createMenuWin() {
   });
   menuWin.setAlwaysOnTop(true, 'pop-up-menu');
   menuWin.loadFile(path.join(__dirname, 'menu.html'));
-  menuWin.on('blur', closeMenu);
+  // После клика по трею фокус ещё мгновение уходит на панель задач: первую потерю фокуса игнорируем
+  menuWin.on('blur', () => { if (Date.now() - menuShownAt > 400) closeMenu(); });
   menuWin.on('close', (e) => { if (!quitting) { e.preventDefault(); closeMenu(); } });
 }
 function closeMenu() { if (alive(menuWin) && menuWin.isVisible()) menuWin.hide(); }
@@ -465,7 +472,25 @@ ipcMain.on('menu:size', (_e, w, h) => {
   if (y + h > wa.y + wa.height) y = menuAnchor.y - h + 8;  // не влезает снизу (трей) — открываем вверх
   x = Math.max(wa.x, x); y = Math.max(wa.y, y);
   menuWin.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) });
-  menuWin.show(); menuWin.focus();
+  menuShownAt = Date.now();
+  menuWin.show(); menuWin.focus(); forceForeground(menuWin);
+  setTimeout(() => {
+    if (!alive(menuWin) || !menuWin.isVisible() || menuWin.isFocused()) return;
+    menuWin.focus(); forceForeground(menuWin);
+    debugLog(`menu shown without focus, retried: focused=${menuWin.isFocused()}`);
+  }, 120);
+  // Если Windows так и не дала фокус, закрываем меню по клику мимо него
+  clearInterval(menuOutsideTimer);
+  let wasDown = true; // кнопка, открывшая меню, может быть ещё зажата
+  menuOutsideTimer = setInterval(() => {
+    if (!alive(menuWin) || !menuWin.isVisible()) { clearInterval(menuOutsideTimer); return; }
+    const down = mouseDown();
+    if (down && !wasDown && Date.now() - menuShownAt > 300) {
+      const p = screen.getCursorScreenPoint(), b = menuWin.getBounds();
+      if (p.x < b.x || p.x >= b.x + b.width || p.y < b.y || p.y >= b.y + b.height) closeMenu();
+    }
+    wasDown = down;
+  }, 40);
 });
 ipcMain.on('menu:pick', (_e, id) => { const fn = menuActions.get(id); closeMenu(); if (fn) setTimeout(fn, 0); });
 ipcMain.on('menu:close', closeMenu);
@@ -570,7 +595,7 @@ function refreshTray() {
 function createTray() {
   tray = new Tray(iconPath);
   refreshTray();
-  tray.on('right-click', () => showMenu(trayMenuItems()));
+  tray.on('right-click', () => { debugLog('tray right-click'); showMenu(trayMenuItems()); });
   tray.on('click', () => {
     const wasActive = win.isFocused() || Date.now() - lastBlur < 400;
     if (win.isVisible() && !win.isMinimized() && wasActive) win.hide(); else show();
