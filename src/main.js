@@ -124,28 +124,52 @@ setInterval(() => {
   if ((alive(widget) && widget.isVisible()) || (alive(win) && win.isVisible()) || store.get('discord')) syncState();
 }, 1000);
 
-// Win+D («Показать рабочий стол») прячет все окна, даже закреплённые сверху.
-// Не прячет только окна, принадлежащие самому рабочему столу (так живут гаджеты),
-// поэтому назначаем владельцем мини-плеера окно рабочего стола Progman.
-let pinToDesktop = () => {};
+// Win+D («Показать рабочий стол») прячет окна приложений. Окна-инструменты
+// (WS_EX_TOOLWINDOW, как у гаджетов и всплывающих панелей) он не трогает, поэтому
+// мини-плееру ставим этот стиль. Подстраховка: если на переднем плане оказался
+// рабочий стол, поднимаем плеер обратно, не забирая фокус.
+// (Назначать владельцем окно рабочего стола нельзя: такое окно всегда оказывается под остальными.)
+let makeToolWindow = () => {};
+let raiseTopmost = () => {};
+let desktopIsForeground = () => false;
 if (process.platform === 'win32') {
   try {
     const koffi = require('koffi');
     const user32 = koffi.load('user32.dll');
     // дескрипторы передаём числами, без указателей
-    const FindWindowW = user32.func('intptr __stdcall FindWindowW(const char16_t *cls, const char16_t *name)');
+    const GetWindowLongPtrW = user32.func('intptr __stdcall GetWindowLongPtrW(intptr hwnd, int index)');
     const SetWindowLongPtrW = user32.func('intptr __stdcall SetWindowLongPtrW(intptr hwnd, int index, intptr value)');
-    const GWLP_HWNDPARENT = -8;
-    pinToDesktop = (w) => {
+    const SetWindowPos = user32.func('bool __stdcall SetWindowPos(intptr hwnd, intptr after, int x, int y, int cx, int cy, uint flags)');
+    const GetForegroundWindow = user32.func('intptr __stdcall GetForegroundWindow()');
+    const GetClassNameW = user32.func('int __stdcall GetClassNameW(intptr hwnd, void *buf, int max)');
+    const GWL_EXSTYLE = -20, WS_EX_TOOLWINDOW = 0x80n, WS_EX_APPWINDOW = 0x40000n;
+    const HWND_TOPMOST = -1, SWP = 0x0001 | 0x0002 | 0x0010; // NOSIZE | NOMOVE | NOACTIVATE
+    const hwndOf = (w) => w.getNativeWindowHandle().readBigInt64LE(0);
+    makeToolWindow = (w) => {
       try {
-        const progman = FindWindowW('Progman', null);
-        if (!progman) return;
-        const hwnd = w.getNativeWindowHandle().readBigInt64LE(0);
-        SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, progman);
+        const h = hwndOf(w);
+        const ex = BigInt(GetWindowLongPtrW(h, GWL_EXSTYLE));
+        SetWindowLongPtrW(h, GWL_EXSTYLE, (ex | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW);
+        if (store.get('widgetOnTop')) SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP | 0x0020); // + FRAMECHANGED
       } catch {}
+    };
+    raiseTopmost = (w) => { try { SetWindowPos(hwndOf(w), HWND_TOPMOST, 0, 0, 0, 0, SWP | 0x0040); } catch {} }; // + SHOWWINDOW
+    const buf = Buffer.alloc(128);
+    desktopIsForeground = () => {
+      try {
+        const n = GetClassNameW(GetForegroundWindow(), buf, 64);
+        const cls = buf.toString('utf16le', 0, n * 2);
+        return cls === 'WorkerW' || cls === 'Progman';
+      } catch { return false; }
     };
   } catch {}
 }
+let wasDesktop = false;
+setInterval(() => {
+  const now = desktopIsForeground();
+  if (now && !wasDesktop && alive(widget) && widget.isVisible() && store.get('widgetOnTop')) raiseTopmost(widget);
+  wasDesktop = now;
+}, 500);
 
 // ---------- Главное окно ----------
 let pendingMaximize = false, lastBlur = 0;
@@ -338,7 +362,7 @@ function updateWidgetVisibility() {
 function showWidget() {
   if (!alive(widget)) createWidget();
   if (!widget.isVisible()) {
-    pinToDesktop(widget); // каждый раз: после перезапуска Проводника окно рабочего стола новое
+    makeToolWindow(widget);
     widget.showInactive();
     widget.webContents.send('config', widgetConfig());
     syncState();
